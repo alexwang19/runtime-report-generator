@@ -1,41 +1,40 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
-using System.Net.Http;
-using System.Net.Http.Headers;
 using System.IO.Compression;
+using System.Net.Http;
 using System.Threading.Tasks;
-using System.Text;
-using System.Text.Json;
 using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
+using System.Net;
+using Microsoft.Extensions.Logging;
 
 public class ApiService
 {
-    public async Task<Stream> DownloadReportAsync(string secureUrlAuthority, HttpClient httpClient, string reportID)
+    public async Task<Stream> DownloadReportAsync(string secureUrlAuthority, HttpClient httpClient, string reportID, ILogger logger)
     {
         try
         {
             var apiPath = $"api/scanning/reporting/v2/schedules/{reportID}/download";
             var apiUrl = $"https://{secureUrlAuthority}/{apiPath}";
-            Console.WriteLine("Making api call to download report...");
+            logger.LogInformation("Making API call to download report...");
+            
             HttpResponseMessage response = await httpClient.GetAsync(apiUrl);
-            Console.WriteLine("Api call complete to retrieve report...");
+            response.EnsureSuccessStatusCode(); // Ensure the HTTP request was successful
 
-            if (response.IsSuccessStatusCode)
-            {
-                Stream contentStream = await response.Content.ReadAsStreamAsync();
-                return DecompressStream(contentStream);
-            }
-            else
-            {
-                Console.WriteLine($"Failed to download. Status code: {response.StatusCode}");
-                return null;
-            }
+            logger.LogInformation("API call completed to retrieve report...");
+
+            Stream contentStream = await response.Content.ReadAsStreamAsync();
+            return DecompressStream(contentStream);
+        }
+        catch (HttpRequestException ex)
+        {
+            logger.LogError($"HTTP Request Error: {ex.Message}");
+            throw;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error: {ex.Message}");
-            return null;
+            logger.LogError($"Error: {ex.Message}");
+            throw;
         }
     }
 
@@ -50,68 +49,86 @@ public class ApiService
         }
     }
 
-    public async Task<List<RuntimeResultInfo>> GetRuntimeWorkloadScanResultsList(string secureUrlAuthority, HttpClient httpClient)
+    public async Task<List<RuntimeResultInfo>> GetRuntimeWorkloadScanResultsList(string secureUrlAuthority, HttpClient httpClient, ILogger logger)
     {
         var limit = 1000;
         var cursor = "";
         var runtimeWorkloadScanResults = new List<RuntimeResultInfo>();
 
-        while (true)
-        {
-            // public api
-            // var apiPath = "secure/vulnerability/v1beta1/runtime-results";
-            // internal api
-            var apiPath = "api/scanning/runtime/v2/workflows/results";
-            var apiUrl = $"https://{secureUrlAuthority}/{apiPath}?cursor={cursor}&filter=asset.type+%3D+'workload'&limit={limit}";
-            Console.WriteLine("Making api call to retrieve runtime scan results...");
-            Console.WriteLine(apiUrl);
-            var responseJson = await httpClient.GetStringAsync(apiUrl);
-            Console.WriteLine("Api call complete to retrieve runtime scan results...");
-            // HttpResponseMessage response = await httpClient.GetAsync(apiUrlUpdated);
-            // var responseJson = await response.Content.ReadAsStringAsync();
-            // var page2 = JsonDocument.Parse(responseJson).RootElement.GetProperty("page");
-            // Console.WriteLine(page2);
-            var data = JsonDocument.Parse(responseJson).RootElement.GetProperty("data");
-            // Console.WriteLine(data.Length);
-            List<dynamic> objects = JsonConvert.DeserializeObject<List<dynamic>>(data.ToString());
-            // Console.WriteLine(objects.Count);
-            foreach (var obj in objects) {
-                // Console.WriteLine( obj["recordDetails"]["mainAssetName"] + "," + obj["recordDetails"]["labels"]["kubernetes.cluster.name"] + "," + obj["scope"]["kubernetes.namespace.name"] + "," + obj["scope"]["kubernetes.workload.type"] + "," + obj["scope"]["kubernetes.workload.name"] + "," + obj["scope"]["kubernetes.pod.container.name"]);
-                var runtimeResultInfo = new RuntimeResultInfo
-                {
-                    // K8SClusterName = obj["scope"]["kubernetes.cluster.name"],
-                    // K8SNamespaceName = obj["scope"]["kubernetes.namespace.name"],
-                    // K8SWorkloadType = obj["scope"]["kubernetes.workload.type"],
-                    // K8SWorkloadName = obj["scope"]["kubernetes.workload.name"],
-                    // K8SContainerName = obj["scope"]["kubernetes.pod.container.name"],
-                    // Image = obj["mainAssetName"],
-                    K8SClusterName = obj["recordDetails"]["labels"]["kubernetes.cluster.name"],
-                    K8SNamespaceName = obj["recordDetails"]["labels"]["kubernetes.namespace.name"],
-                    K8SWorkloadType = obj["recordDetails"]["labels"]["kubernetes.workload.type"],
-                    K8SWorkloadName = obj["recordDetails"]["labels"]["kubernetes.workload.name"],
-                    K8SContainerName = obj["recordDetails"]["labels"]["kubernetes.pod.container.name"],
-                    Image = obj["recordDetails"]["mainAssetName"],
-                    ImageId = obj["resourceId"],
-                };
-                runtimeWorkloadScanResults.Add(runtimeResultInfo);
-            }
+        const int maxRetries = 3;
+        int retryCount = 0;
 
-            var page = JsonDocument.Parse(responseJson).RootElement.GetProperty("page");
-            if (page.TryGetProperty("next", out JsonElement nextCursor))
+        try
+        {
+            while (true)
             {
-                cursor = nextCursor.ToString();
-                Console.WriteLine("This is cursor: " + cursor);
-                if(cursor == ""){
-                    Console.WriteLine("Next page doesn't exist. Exiting...");
+                var apiPath = "api/scanning/runtime/v2/workflows/results";
+                var apiUrl = $"https://{secureUrlAuthority}/{apiPath}?cursor={cursor}&filter=asset.type+%3D+'workload'&limit={limit}";
+
+                logger.LogInformation("Making API call to retrieve runtime scan results...");
+                logger.LogInformation(apiUrl);
+
+                var response = await httpClient.GetAsync(apiUrl);
+
+                if (response.StatusCode == HttpStatusCode.TooManyRequests) // 429 status code
+                {
+                    if (retryCount >= maxRetries)
+                    {
+                        logger.LogInformation("Maximum retry count reached. Exiting.");
+                        break;
+                    }
+
+                    retryCount++;
+                    logger.LogInformation($"Rate limited. Retrying in 60 seconds (Retry {retryCount}/{maxRetries})...");
+                    await Task.Delay(60000); // Wait for 60 seconds before retrying
+                    continue;
+                }
+
+                response.EnsureSuccessStatusCode();
+
+                logger.LogInformation("API call completed to retrieve runtime scan results...");
+
+                var responseJson = await response.Content.ReadAsStringAsync();
+
+                dynamic data = JsonConvert.DeserializeObject(responseJson);
+                var objects = data["data"];
+
+                foreach (var obj in objects)
+                {
+                    var runtimeResultInfo = new RuntimeResultInfo
+                    {
+                        K8SClusterName = obj["recordDetails"]["labels"]["kubernetes.cluster.name"],
+                        K8SNamespaceName = obj["recordDetails"]["labels"]["kubernetes.namespace.name"],
+                        K8SWorkloadType = obj["recordDetails"]["labels"]["kubernetes.workload.type"],
+                        K8SWorkloadName = obj["recordDetails"]["labels"]["kubernetes.workload.name"],
+                        K8SContainerName = obj["recordDetails"]["labels"]["kubernetes.pod.container.name"],
+                        Image = obj["recordDetails"]["mainAssetName"],
+                        ImageId = obj["resourceId"]
+                    };
+
+                    runtimeWorkloadScanResults.Add(runtimeResultInfo);
+                }
+
+                if (data["page"]?["next"] != null)
+                {
+                    cursor = data["page"]["next"].ToString();
+                }
+                else
+                {
+                    logger.LogInformation("Next page doesn't exist. Exiting while loop.");
                     break;
                 }
             }
-            else
-            {
-                Console.WriteLine("Next page doesn't exist. Exiting while loop.");
-                // Console.WriteLine(counter.ToString());
-                break;
-            }
+        }
+        catch (HttpRequestException ex)
+        {
+            logger.LogError($"HTTP Request Error: {ex.Message}");
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError($"Error: {ex.Message}");
+            throw;
         }
 
         return runtimeWorkloadScanResults;
