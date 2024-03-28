@@ -1,11 +1,16 @@
 using Newtonsoft.Json;
 using System;
 using Microsoft.Extensions.Logging;
+using System.Diagnostics;
+
 
 class Program
 {
     static async Task Main(string[] args)
     {
+
+        Stopwatch stopwatch = new Stopwatch();
+        stopwatch.Start();
 
         using ILoggerFactory factory = LoggerFactory.Create(builder => builder.AddConsole());
         ILogger logger = factory.CreateLogger("Program");
@@ -13,7 +18,7 @@ class Program
         // Parse the command line arguments
         var (secureUrlAuthority, apiToken, outputFileName, reportID) = ParseArgs(args, logger);
 
-        // Add the authentication header
+
         var httpClient = new HttpClient();
         httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiToken);
 
@@ -72,25 +77,8 @@ class Program
                     }
                 }
 
-                // Find duplicates
-                var duplicates = runtimeResults
-                    .GroupBy(r => new { r.K8SClusterName, r.K8SNamespaceName, r.K8SWorkloadType, r.K8SWorkloadName, r.K8SContainerName, r.Image })
-                    .Where(g => g.Count() > 1)
-                    .SelectMany(g => g);
-
-                if (duplicates.Any())
-                {
-                    foreach (var duplicate in duplicates)
-                    {
-                        logger.LogInformation($"Duplicate found: {duplicate.K8SClusterName}, {duplicate.K8SNamespaceName}, {duplicate.K8SWorkloadType}, {duplicate.K8SWorkloadName}, {duplicate.K8SContainerName}, {duplicate.Image}");
-                    }
-                }
-                else
-                {
-                    logger.LogInformation("No duplicates found.");
-                }
-
                 List<RuntimeResultInfo> unmatchedRuntimeResults = new List<RuntimeResultInfo>(runtimeResults);
+                List<Vulnerability> unmatchedReportResults = new List<Vulnerability>(vulnerabilities);
                 var writer = new StreamWriter(outputFileName);
                 int counter = 0;
 
@@ -137,6 +125,7 @@ class Program
 
                     foreach (var vulnerability in matchingVulnerabilities)
                     {
+                        unmatchedReportResults.Remove(vulnerability);
                         writer.WriteLine($"{vulnerability.VulnerabilityID},{vulnerability.Severity},{vulnerability.PackageName},{vulnerability.PackageVersion},{vulnerability.PackageType},{vulnerability.PackagePath},{vulnerability.Image},{vulnerability.OSName},{vulnerability.CVSSVersion},{vulnerability.CVSSScore},{vulnerability.CVSSVector},{vulnerability.VulnLink},{vulnerability.VulnPublishDate},{vulnerability.VulnFixDate},{vulnerability.FixVersion},{vulnerability.PublicExploit},{vulnerability.K8SClusterName},{vulnerability.K8SNamespaceName},{vulnerability.K8SWorkloadType},{vulnerability.K8SWorkloadName},{vulnerability.K8SContainerName},{vulnerability.ImageID},{vulnerability.K8SPODCount},{vulnerability.PackageSuggestedFix},{vulnerability.InUse},{vulnerability.RiskAccepted}");
                     }
 
@@ -144,6 +133,25 @@ class Program
                         unmatchedRuntimeResults.Remove(result);
                     }
                 }
+
+                logger.LogInformation("Total running workloads processed: " + counter);
+
+                // Find duplicates
+                var duplicates = runtimeResults
+                    .GroupBy(r => new { r.K8SClusterName, r.K8SNamespaceName, r.K8SWorkloadType, r.K8SWorkloadName, r.K8SContainerName, r.Image })
+                    .Where(g => g.Count() > 1)
+                    .SelectMany(g => g);
+                
+                if (duplicates.Any())
+                {
+                    foreach (var duplicate in duplicates)
+                    {
+                        logger.LogInformation($"Duplicate found: {duplicate.K8SClusterName}, {duplicate.K8SNamespaceName}, {duplicate.K8SWorkloadType}, {duplicate.K8SWorkloadName}, {duplicate.K8SContainerName}, {duplicate.Image}");
+                    }
+                }
+
+                int totalDuplicatesCount = duplicates.Count();
+                logger.LogInformation("Total count of duplicates found: " + totalDuplicatesCount);
 
                 // foreach (var vulnerability in matchingVulnerabilities)
                 // {
@@ -162,16 +170,19 @@ class Program
                     }
                 }
 
-                // using (StreamWriter reportUnmatchedWriter = new StreamWriter("reportingMissing_vulnerabilities.csv"))
-                // {
-                //     foreach (var unmatchedVulnerability in vulnerabilities)
-                //     {
-                //         reportUnmatchedWriter.WriteLine($"{unmatchedVulnerability.VulnerabilityID},{unmatchedVulnerability.Severity},{unmatchedVulnerability.PackageName},{unmatchedVulnerability.PackageVersion},{unmatchedVulnerability.PackageType},{unmatchedVulnerability.PackagePath},{unmatchedVulnerability.Image},{unmatchedVulnerability.OSName},{unmatchedVulnerability.CVSSVersion},{unmatchedVulnerability.CVSSScore},{unmatchedVulnerability.CVSSVector},{unmatchedVulnerability.VulnLink},{unmatchedVulnerability.VulnPublishDate},{unmatchedVulnerability.VulnFixDate},{unmatchedVulnerability.FixVersion},{unmatchedVulnerability.PublicExploit},{unmatchedVulnerability.K8SClusterName},{unmatchedVulnerability.K8SNamespaceName},{unmatchedVulnerability.K8SWorkloadType},{unmatchedVulnerability.K8SWorkloadName},{unmatchedVulnerability.K8SContainerName},{unmatchedVulnerability.ImageID},{unmatchedVulnerability.K8SPODCount},{unmatchedVulnerability.PackageSuggestedFix},{unmatchedVulnerability.InUse},{unmatchedVulnerability.RiskAccepted}");
-                //     }
-                // }
+                using (StreamWriter reportUnmatchedWriter = new StreamWriter("reportingMissing_vulnerabilities.csv"))
+                {
+                    foreach (var unmatchedVulnerability in unmatchedReportResults)
+                    {
+                        reportUnmatchedWriter.WriteLine($"{unmatchedVulnerability.VulnerabilityID},{unmatchedVulnerability.Severity},{unmatchedVulnerability.PackageName},{unmatchedVulnerability.PackageVersion},{unmatchedVulnerability.PackageType},{unmatchedVulnerability.PackagePath},{unmatchedVulnerability.Image},{unmatchedVulnerability.OSName},{unmatchedVulnerability.CVSSVersion},{unmatchedVulnerability.CVSSScore},{unmatchedVulnerability.CVSSVector},{unmatchedVulnerability.VulnLink},{unmatchedVulnerability.VulnPublishDate},{unmatchedVulnerability.VulnFixDate},{unmatchedVulnerability.FixVersion},{unmatchedVulnerability.PublicExploit},{unmatchedVulnerability.K8SClusterName},{unmatchedVulnerability.K8SNamespaceName},{unmatchedVulnerability.K8SWorkloadType},{unmatchedVulnerability.K8SWorkloadName},{unmatchedVulnerability.K8SContainerName},{unmatchedVulnerability.ImageID},{unmatchedVulnerability.K8SPODCount},{unmatchedVulnerability.PackageSuggestedFix},{unmatchedVulnerability.InUse},{unmatchedVulnerability.RiskAccepted}");
+                    }
+                }
 
+                logger.LogInformation("Runtime report generation completed...");
 
-                logger.LogInformation("Filtered lines have been written to the output file.");
+                stopwatch.Stop();
+                TimeSpan runtime = stopwatch.Elapsed;
+                logger.LogInformation("Total runtime of the script: " + runtime);
             }
         }
         catch (Exception ex)
