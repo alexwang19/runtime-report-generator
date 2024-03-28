@@ -10,7 +10,7 @@ using Microsoft.Extensions.Logging;
 
 public class ApiService
 {
-    public async Task<Stream> DownloadReportAsync(string secureUrlAuthority, HttpClient httpClient, string reportID, ILogger logger)
+    public async Task<Stream> DownloadReport(string secureUrlAuthority, HttpClient httpClient, string reportID, ILogger logger)
     {
         try
         {

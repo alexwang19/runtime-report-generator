@@ -26,7 +26,7 @@ class Program
         
 
         try{
-            Stream csvFileStream = await apiService.DownloadReportAsync(secureUrlAuthority, httpClient, reportID, logger);
+            Stream csvFileStream = await apiService.DownloadReport(secureUrlAuthority, httpClient, reportID, logger);
             List<RuntimeResultInfo> runtimeResults = await apiService.GetRuntimeWorkloadScanResultsList(secureUrlAuthority, httpClient, logger);
 
             if (csvFileStream != null)
