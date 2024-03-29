@@ -18,6 +18,8 @@ class Program
         // Parse the command line arguments
         var (secureUrlAuthority, apiToken, outputFileName, reportID) = ParseArgs(args, logger);
 
+        // Pass accessKey as environment variable
+        // Return Code expected
 
         var httpClient = new HttpClient();
         httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiToken);
@@ -36,42 +38,69 @@ class Program
 
                 using (StreamReader reader = new StreamReader(csvFileStream))
                 {
-                    // Skip the header line
-                    reader.ReadLine();
+                    // Read the header line
+                    string headerLine = await reader.ReadLineAsync();
 
+                    // Split headers and find column indexes
+                    string[] headers = headerLine.Split(',');
+
+                    // Expected column names
+                    string[] expectedColumns = {
+                        "Vulnerability ID", "Severity", "Package name", "Package version", "Package type", "Package path", "Image", "OS Name",
+                        "CVSS version", "CVSS score", "CVSS vector", "Vuln link", "Vuln Publish date", "Vuln Fix date", "Fix version",
+                        "Public Exploit", "K8S cluster name", "K8S namespace name", "K8S workload type", "K8S workload name",
+                        "K8S container name", "Image ID", "K8S POD count", "Package suggested fix", "In use", "Risk accepted",
+                        "NVD Vuln Publish date"
+                    };
+
+                    // Validate headers
+                    if (!expectedColumns.All(header => headers.Contains(header)))
+                    {
+                        logger.LogError("CSV file does not contain all expected column headers.");
+                        return;
+                    }
+
+                    Dictionary<string, int> columnIndexMap = new Dictionary<string, int>();
+                    for (int i = 0; i < headers.Length; i++)
+                    {
+                        columnIndexMap.Add(headers[i], i);
+                    }
+
+
+                    // Read data lines
                     while (!reader.EndOfStream)
                     {
-                        var line = reader.ReadLine();
+                        var line = await reader.ReadLineAsync();
                         var values = line.Split(',');
 
                         var vulnerability = new Vulnerability
                         {
-                            VulnerabilityID = values[0],
-                            Severity = values[1],
-                            PackageName = values[2],
-                            PackageVersion = values[3],
-                            PackageType = values[4],
-                            PackagePath = values[5],
-                            Image = values[6],
-                            OSName = values[7],
-                            CVSSVersion = values[8],
-                            CVSSScore = values[9],
-                            CVSSVector = values[10],
-                            VulnLink = values[11],
-                            VulnPublishDate = values[12],
-                            VulnFixDate = values[13],
-                            FixVersion = values[14],
-                            PublicExploit = values[15],
-                            K8SClusterName = values[16],
-                            K8SNamespaceName = values[17],
-                            K8SWorkloadType = values[18],
-                            K8SWorkloadName = values[19],
-                            K8SContainerName = values[20],
-                            ImageID = values[21],
-                            K8SPODCount = values[22],
-                            PackageSuggestedFix = values[23],
-                            InUse = values[24],
-                            RiskAccepted = values[25]
+                            VulnerabilityID = values[columnIndexMap["Vulnerability ID"]],
+                            Severity = values[columnIndexMap["Severity"]],
+                            PackageName = values[columnIndexMap["Package name"]],
+                            PackageVersion = values[columnIndexMap["Package version"]],
+                            PackageType = values[columnIndexMap["Package type"]],
+                            PackagePath = values[columnIndexMap["Package path"]],
+                            Image = values[columnIndexMap["Image"]],
+                            OSName = values[columnIndexMap["OS Name"]],
+                            CVSSVersion = values[columnIndexMap["CVSS version"]],
+                            CVSSScore = values[columnIndexMap["CVSS score"]],
+                            CVSSVector = values[columnIndexMap["CVSS vector"]],
+                            VulnLink = values[columnIndexMap["Vuln link"]],
+                            VulnPublishDate = values[columnIndexMap["Vuln Publish date"]],
+                            VulnFixDate = values[columnIndexMap["Vuln Fix date"]],
+                            FixVersion = values[columnIndexMap["Fix version"]],
+                            PublicExploit = values[columnIndexMap["Public Exploit"]],
+                            K8SClusterName = values[columnIndexMap["K8S cluster name"]],
+                            K8SNamespaceName = values[columnIndexMap["K8S namespace name"]],
+                            K8SWorkloadType = values[columnIndexMap["K8S workload type"]],
+                            K8SWorkloadName = values[columnIndexMap["K8S workload name"]],
+                            K8SContainerName = values[columnIndexMap["K8S container name"]],
+                            ImageID = values[columnIndexMap["Image ID"]],
+                            K8SPODCount = values[columnIndexMap["K8S POD count"]],
+                            PackageSuggestedFix = values[columnIndexMap["Package suggested fix"]],
+                            InUse = values[columnIndexMap["In use"]],
+                            RiskAccepted = values[columnIndexMap["Risk accepted"]]
                         };
                         vulnerabilities.Add(vulnerability);
                     }
