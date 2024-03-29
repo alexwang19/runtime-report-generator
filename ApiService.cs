@@ -10,6 +10,32 @@ using Microsoft.Extensions.Logging;
 
 public class ApiService
 {
+
+    // Retrieve report status to output as metadata
+    // Output the last runtime of the report
+    public async Task<DateTime?> GetLastCompletedReportDateTime(string secureUrlAuthority, HttpClient httpClient, string reportID, ILogger logger)
+    {
+        try
+        {
+            var apiPath = $"api/scanning/reporting/v2/schedules/{reportID}";
+            var apiUrl = $"https://{secureUrlAuthority}/{apiPath}";
+            logger.LogInformation("Making API call to download report...");
+            
+            HttpResponseMessage response = await httpClient.GetAsync(apiUrl);
+            response.EnsureSuccessStatusCode();
+            
+            var json = await response.Content.ReadAsStringAsync();
+            var report = JsonConvert.DeserializeObject<Report>(json);
+            
+            return report.reportLastCompletedAt;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error: {ex.Message}");
+            return null;
+        }
+    }
+
     public async Task<Stream> DownloadReport(string secureUrlAuthority, HttpClient httpClient, string reportID, ILogger logger)
     {
         try
@@ -93,6 +119,7 @@ public class ApiService
                 dynamic data = JsonConvert.DeserializeObject(responseJson);
                 var objects = data["data"];
 
+                // Retrieve resultID in case it's needed
                 foreach (var obj in objects)
                 {
                     var runtimeResultInfo = new RuntimeResultInfo
@@ -122,6 +149,7 @@ public class ApiService
         }
         catch (HttpRequestException ex)
         {
+            // Catch multiple types of exceptions
             logger.LogError($"HTTP Request Error: {ex.Message}");
             throw;
         }

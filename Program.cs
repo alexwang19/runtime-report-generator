@@ -25,6 +25,12 @@ class Program
         httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiToken);
 
         ApiService apiService = new ApiService();
+
+        var lastCompletedAt = await apiService.GetLastCompletedReportDateTime(secureUrlAuthority, httpClient, reportID, logger);
+        if (lastCompletedAt.HasValue)
+            Console.WriteLine($"Last completed report: {lastCompletedAt.Value}");
+        else
+            Console.WriteLine("Failed to fetch the last completed report date.");
         
 
         try{
