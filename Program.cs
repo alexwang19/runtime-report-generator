@@ -25,30 +25,30 @@ class Program
         httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiToken);
 
         ApiService apiService = new ApiService();
-
-        var lastCompletedAt = await apiService.GetLastCompletedReportDateTime(secureUrlAuthority, httpClient, reportID, logger);
-        if (lastCompletedAt.HasValue)
-            Console.WriteLine($"Last completed report: {lastCompletedAt.Value}");
-        else
-            Console.WriteLine("Failed to fetch the last completed report date.");
         
 
         try{
             Stream csvFileStream = await apiService.DownloadReport(secureUrlAuthority, httpClient, reportID, logger);
-            List<RuntimeResultInfo> runtimeResults = await apiService.GetRuntimeWorkloadScanResultsList(secureUrlAuthority, httpClient, logger);
-
+            List<RuntimeResultInfo> runtimeResults = new List<RuntimeResultInfo>();
+            // csvFileStream = new MemoryStream();
+            
             if (csvFileStream != null)
             {
+                var lastCompletedAt = await apiService.GetLastCompletedReportDateTime(secureUrlAuthority, httpClient, reportID, logger);
+                if (lastCompletedAt.HasValue)
+                    Console.WriteLine($"Last completed report: {lastCompletedAt.Value}");
+                else
+                    Console.WriteLine("Failed to fetch the last completed report date.");
                 logger.LogInformation("Beginning matching process...");
                 List<Vulnerability> vulnerabilities = new List<Vulnerability>();
 
                 using (StreamReader reader = new StreamReader(csvFileStream))
                 {
                     // Read the header line
-                    string headerLine = await reader.ReadLineAsync();
+                    string headerLine = await reader.ReadLineAsync() ?? "";
 
                     // Split headers and find column indexes
-                    string[] headers = headerLine.Split(',');
+                    string[] headers = headerLine?.Split(',') ?? new string[0];
 
                     // Expected column names
                     string[] expectedColumns = {
@@ -66,6 +66,8 @@ class Program
                         return;
                     }
 
+                    runtimeResults = await apiService.GetRuntimeWorkloadScanResultsList(secureUrlAuthority, httpClient, logger);
+
                     Dictionary<string, int> columnIndexMap = new Dictionary<string, int>();
                     for (int i = 0; i < headers.Length; i++)
                     {
@@ -77,7 +79,7 @@ class Program
                     while (!reader.EndOfStream)
                     {
                         var line = await reader.ReadLineAsync();
-                        var values = line.Split(',');
+                        var values = line?.Split(',') ?? new string[0];
 
                         var vulnerability = new Vulnerability
                         {

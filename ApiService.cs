@@ -11,8 +11,7 @@ using Microsoft.Extensions.Logging;
 public class ApiService
 {
 
-    // Retrieve report status to output as metadata
-    // Output the last runtime of the report
+
     public async Task<DateTime?> GetLastCompletedReportDateTime(string secureUrlAuthority, HttpClient httpClient, string reportID, ILogger logger)
     {
         try
@@ -27,7 +26,7 @@ public class ApiService
             var json = await response.Content.ReadAsStringAsync();
             var report = JsonConvert.DeserializeObject<Report>(json);
             
-            return report.reportLastCompletedAt;
+            return report?.reportLastCompletedAt;
         }
         catch (Exception ex)
         {
@@ -116,27 +115,35 @@ public class ApiService
 
                 var responseJson = await response.Content.ReadAsStringAsync();
 
-                dynamic data = JsonConvert.DeserializeObject(responseJson);
-                var objects = data["data"];
+                dynamic? data = JsonConvert.DeserializeObject(responseJson);
+                var objects = data?["data"];
 
                 // Retrieve resultID in case it's needed
-                foreach (var obj in objects)
+                if (objects != null)
                 {
-                    var runtimeResultInfo = new RuntimeResultInfo
+                    // Process objects if data is not null
+                    foreach (var obj in objects)
                     {
-                        K8SClusterName = obj["recordDetails"]["labels"]["kubernetes.cluster.name"],
-                        K8SNamespaceName = obj["recordDetails"]["labels"]["kubernetes.namespace.name"],
-                        K8SWorkloadType = obj["recordDetails"]["labels"]["kubernetes.workload.type"],
-                        K8SWorkloadName = obj["recordDetails"]["labels"]["kubernetes.workload.name"],
-                        K8SContainerName = obj["recordDetails"]["labels"]["kubernetes.pod.container.name"],
-                        Image = obj["recordDetails"]["mainAssetName"],
-                        ImageId = obj["resourceId"]
-                    };
+                        var runtimeResultInfo = new RuntimeResultInfo
+                        {
+                            K8SClusterName = obj["recordDetails"]["labels"]["kubernetes.cluster.name"],
+                            K8SNamespaceName = obj["recordDetails"]["labels"]["kubernetes.namespace.name"],
+                            K8SWorkloadType = obj["recordDetails"]["labels"]["kubernetes.workload.type"],
+                            K8SWorkloadName = obj["recordDetails"]["labels"]["kubernetes.workload.name"],
+                            K8SContainerName = obj["recordDetails"]["labels"]["kubernetes.pod.container.name"],
+                            Image = obj["recordDetails"]["mainAssetName"],
+                            ImageId = obj["resourceId"]
+                        };
 
-                    runtimeWorkloadScanResults.Add(runtimeResultInfo);
+                        runtimeWorkloadScanResults.Add(runtimeResultInfo);
+                    }
+                }
+                else {
+                    logger.LogError("Error with deserializing object...");
                 }
 
-                if (data["page"]?["next"] != null)
+
+                if (data?["page"]?["next"] != null)
                 {
                     cursor = data["page"]["next"].ToString();
                 }
