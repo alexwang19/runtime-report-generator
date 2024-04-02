@@ -100,7 +100,7 @@ public class ApiService
                     if (retryCount >= maxRetries)
                     {
                         logger.LogInformation("Maximum retry count reached. Exiting.");
-                        break;
+                        throw new Exception("Maximum retry count reached.");
                     }
 
                     retryCount++;
@@ -132,7 +132,8 @@ public class ApiService
                             K8SWorkloadName = obj["recordDetails"]["labels"]["kubernetes.workload.name"],
                             K8SContainerName = obj["recordDetails"]["labels"]["kubernetes.pod.container.name"],
                             Image = obj["recordDetails"]["mainAssetName"],
-                            ImageId = obj["resourceId"]
+                            ImageId = obj["resourceId"],
+                            ResultId = obj["resultId"]
                         };
 
                         runtimeWorkloadScanResults.Add(runtimeResultInfo);

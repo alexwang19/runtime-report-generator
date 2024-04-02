@@ -35,10 +35,7 @@ class Program
             if (csvFileStream != null)
             {
                 var lastCompletedAt = await apiService.GetLastCompletedReportDateTime(secureUrlAuthority, httpClient, reportID, logger);
-                if (lastCompletedAt.HasValue)
-                    Console.WriteLine($"Last completed report: {lastCompletedAt.Value}");
-                else
-                    Console.WriteLine("Failed to fetch the last completed report date.");
+
                 logger.LogInformation("Beginning matching process...");
                 List<Vulnerability> vulnerabilities = new List<Vulnerability>();
 
@@ -216,6 +213,11 @@ class Program
                 }
 
                 logger.LogInformation("Runtime report generation completed...");
+                
+                if (lastCompletedAt.HasValue)
+                    logger.LogInformation($"Last completed report: {lastCompletedAt.Value}");
+                else
+                    logger.LogInformation("Failed to fetch the last completed report date.");
 
                 stopwatch.Stop();
                 TimeSpan runtime = stopwatch.Elapsed;
