@@ -116,7 +116,6 @@ class Program
                 List<Vulnerability> matchedVulnsList = new List<Vulnerability>();
                 // var writer = new StreamWriter(outputFileName);
                 int counter = 0;
-                int vulnCounter = 0;
                 int totalRuntimeEntries = vulnerabilities.Count + 1;
 
                 logger.LogInformation("Beginning matching process...");
@@ -165,7 +164,7 @@ class Program
                         }
 
                         // Remove matched vulnerabilities from the dictionary
-                        vulnerabilityDictionary.Remove(key);
+                        // vulnerabilityDictionary.Remove(key);
                         unmatchedRuntimeResults.Remove(result);
                     }
                 }
@@ -226,6 +225,7 @@ class Program
                 // logger.LogInformation("Total running workloads processed: " + counter);
 
                 using (StreamWriter writer = new StreamWriter(outputFileName)){
+                    writer.WriteLine("Vulnerability ID,Severity,Package name,Package version,Package type,Package path,Image,OS Name,CVSS version,CVSS score,CVSS vector,Vuln link,Vuln Publish date,Vuln Fix date,Fix version,Public Exploit,K8S cluster name,K8S namespace name,K8S workload type,K8S workload name,K8S container name,Image ID,K8S POD count,Package suggested fix,In use,Risk accepted");
                     foreach (var vulnerability in matchedVulnsList)
                     {
                         writer.WriteLine($"{vulnerability.VulnerabilityID},{vulnerability.Severity},{vulnerability.PackageName},{vulnerability.PackageVersion},{vulnerability.PackageType},{vulnerability.PackagePath},{vulnerability.Image},{vulnerability.OSName},{vulnerability.CVSSVersion},{vulnerability.CVSSScore},{vulnerability.CVSSVector},{vulnerability.VulnLink},{vulnerability.VulnPublishDate},{vulnerability.VulnFixDate},{vulnerability.FixVersion},{vulnerability.PublicExploit},{vulnerability.K8SClusterName},{vulnerability.K8SNamespaceName},{vulnerability.K8SWorkloadType},{vulnerability.K8SWorkloadName},{vulnerability.K8SContainerName},{vulnerability.ImageID},{vulnerability.K8SPODCount},{vulnerability.PackageSuggestedFix},{vulnerability.InUse},{vulnerability.RiskAccepted}");
