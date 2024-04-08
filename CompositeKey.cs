@@ -13,19 +13,20 @@ public class CompositeKey
     {
         unchecked
         {
+            // Choosing prime numbers to reduce potential collisions when generating hash codes
             int hash = 17;
-            hash = hash * 23 + K8SClusterName.GetHashCode();
-            hash = hash * 23 + K8SNamespaceName.GetHashCode();
-            hash = hash * 23 + K8SWorkloadType.GetHashCode();
-            hash = hash * 23 + K8SWorkloadName.GetHashCode();
-            hash = hash * 23 + K8SContainerName.GetHashCode();
-            hash = hash * 23 + Image.GetHashCode();
-            hash = hash * 23 + ImageID.GetHashCode();
+            hash = hash * 23 + (K8SClusterName?.GetHashCode() ?? 0);
+            hash = hash * 23 + (K8SNamespaceName?.GetHashCode() ?? 0);
+            hash = hash * 23 + (K8SWorkloadType?.GetHashCode() ?? 0);
+            hash = hash * 23 + (K8SWorkloadName?.GetHashCode() ?? 0);
+            hash = hash * 23 + (K8SContainerName?.GetHashCode() ?? 0);
+            hash = hash * 23 + (Image?.GetHashCode() ?? 0);
+            hash = hash * 23 + (ImageID?.GetHashCode() ?? 0);
             return hash;
         }
     }
 
-    public override bool Equals(object obj)
+    public override bool Equals(object? obj)
     {
         if (!(obj is CompositeKey))
             return false;

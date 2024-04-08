@@ -2,6 +2,7 @@ using Newtonsoft.Json;
 using System;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
+using System.Reflection;
 
 
 class Program
@@ -30,14 +31,12 @@ class Program
         try{
             Stream csvFileStream = await apiService.DownloadReport(secureUrlAuthority, httpClient, reportID, logger);
             List<RuntimeResultInfo> runtimeResults = new List<RuntimeResultInfo>();
-            // csvFileStream = new MemoryStream();
             
             if (csvFileStream != null)
             {
                 var lastCompletedAt = await apiService.GetLastCompletedReportDateTime(secureUrlAuthority, httpClient, reportID, logger);
 
-                
-                List<Vulnerability> vulnerabilities = new List<Vulnerability>();
+                List<Dictionary<string, string>> vulnerabilities = new List<Dictionary<string, string>>();
 
                 using (StreamReader reader = new StreamReader(csvFileStream))
                 {
@@ -71,50 +70,30 @@ class Program
                         columnIndexMap.Add(headers[i], i);
                     }
 
-
                     // Read data lines
                     while (!reader.EndOfStream)
                     {
                         var line = await reader.ReadLineAsync();
                         var values = line?.Split(',') ?? new string[0];
 
-                        var vulnerability = new Vulnerability
+                        var vulnerability = new Dictionary<string, string>();
+                        foreach (var header in columnIndexMap.Keys)
                         {
-                            VulnerabilityID = values[columnIndexMap["Vulnerability ID"]],
-                            Severity = values[columnIndexMap["Severity"]],
-                            PackageName = values[columnIndexMap["Package name"]],
-                            PackageVersion = values[columnIndexMap["Package version"]],
-                            PackageType = values[columnIndexMap["Package type"]],
-                            PackagePath = values[columnIndexMap["Package path"]],
-                            Image = values[columnIndexMap["Image"]],
-                            OSName = values[columnIndexMap["OS Name"]],
-                            CVSSVersion = values[columnIndexMap["CVSS version"]],
-                            CVSSScore = values[columnIndexMap["CVSS score"]],
-                            CVSSVector = values[columnIndexMap["CVSS vector"]],
-                            VulnLink = values[columnIndexMap["Vuln link"]],
-                            VulnPublishDate = values[columnIndexMap["Vuln Publish date"]],
-                            VulnFixDate = values[columnIndexMap["Vuln Fix date"]],
-                            FixVersion = values[columnIndexMap["Fix version"]],
-                            PublicExploit = values[columnIndexMap["Public Exploit"]],
-                            K8SClusterName = values[columnIndexMap["K8S cluster name"]],
-                            K8SNamespaceName = values[columnIndexMap["K8S namespace name"]],
-                            K8SWorkloadType = values[columnIndexMap["K8S workload type"]],
-                            K8SWorkloadName = values[columnIndexMap["K8S workload name"]],
-                            K8SContainerName = values[columnIndexMap["K8S container name"]],
-                            ImageID = values[columnIndexMap["Image ID"]],
-                            K8SPODCount = values[columnIndexMap["K8S POD count"]],
-                            PackageSuggestedFix = values[columnIndexMap["Package suggested fix"]],
-                            InUse = values[columnIndexMap["In use"]],
-                            RiskAccepted = values[columnIndexMap["Risk accepted"]]
-                        };
+                            if (columnIndexMap.TryGetValue(header, out int columnIndex) && columnIndex < values.Length)
+                            {
+                                vulnerability[header] = values[columnIndex];
+                            }
+                            else
+                            {
+                                vulnerability[header] = ""; // or any default value if desired
+                            }
+                        }
                         vulnerabilities.Add(vulnerability);
                     }
                 }
 
-                List<RuntimeResultInfo> unmatchedRuntimeResults = new List<RuntimeResultInfo>(runtimeResults);
-                // List<Vulnerability> unmatchedReportResults = new List<Vulnerability>(vulnerabilities);
-                List<Vulnerability> matchedVulnsList = new List<Vulnerability>();
-                // var writer = new StreamWriter(outputFileName);
+                List<Dictionary<string, string>> matchedVulnsList = new List<Dictionary<string, string>>();
+
                 int counter = 0;
                 int totalRuntimeEntries = vulnerabilities.Count + 1;
 
@@ -122,15 +101,16 @@ class Program
                 var vulnerabilityDictionary = vulnerabilities
                     .GroupBy(v => new CompositeKey
                     {
-                        K8SClusterName = v.K8SClusterName,
-                        K8SNamespaceName = v.K8SNamespaceName,
-                        K8SWorkloadType = v.K8SWorkloadType,
-                        K8SWorkloadName = v.K8SWorkloadName,
-                        K8SContainerName = v.K8SContainerName,
-                        Image = v.Image,
-                        ImageID = v.ImageID
+                        K8SClusterName = v["K8S cluster name"],
+                        K8SNamespaceName = v["K8S namespace name"],
+                        K8SWorkloadType = v["K8S workload type"],
+                        K8SWorkloadName = v["K8S workload name"],
+                        K8SContainerName = v["K8S container name"],
+                        Image = v["Image"],
+                        ImageID = v["Image ID"]
                     })
                     .ToDictionary(g => g.Key, g => g.ToList());
+
 
                 // Iterate through runtimeResults and perform matching
                 foreach (var result in runtimeResults)
@@ -141,7 +121,6 @@ class Program
                         logger.LogInformation("Processed this many entries: " + counter);
                     }
 
-                    // Console.WriteLine("(" + "'" + result.Image + "'" + ", " + "'" + result.K8SClusterName + "'" + ", " + "'" + result.K8SNamespaceName + "'" + ", " + "'" + result.K8SWorkloadType  + "'" + ", " + "'" + result.K8SWorkloadName + "'" + ", " + "'" + result.K8SContainerName + "'" + ")");
                     // Construct the composite key for the current result
                     var key = new CompositeKey
                     {
@@ -160,75 +139,24 @@ class Program
                         // Process matchingVulnerabilities
                         foreach (var vulnerability in matchingVulnerabilities)
                         {
-                            matchedVulnsList.Add(vulnerability);
+                            matchedVulnsList.Add(vulnerability); // Adding dictionary directly
                         }
 
                         // Remove matched vulnerabilities from the dictionary
                         // vulnerabilityDictionary.Remove(key);
-                        unmatchedRuntimeResults.Remove(result);
                     }
                 }
-                // foreach (var result in runtimeResults){
-                //     counter++;
-                //     if (counter % 1000 == 0)
-                //     {
-                //         logger.LogInformation("Processed this many entries: " + counter);
-                //     }
 
-                //     // logger.LogInformation("Runtime data: " + result.K8SClusterName + "," + result.K8SNamespaceName + "," + result.K8SWorkloadType + "," + result.K8SWorkloadName + "," + result.K8SContainerName + "," + result.Image);
-                //     // foreach (var vulnerability in vulnerabilities){
-                //     //     if (vulnerability.K8SClusterName == result.K8SClusterName &&
-                //     //     vulnerability.K8SNamespaceName == result.K8SNamespaceName &&
-                //     //     vulnerability.K8SWorkloadType == result.K8SWorkloadType &&
-                //     //     vulnerability.K8SWorkloadName == result.K8SWorkloadName &&
-                //     //     vulnerability.K8SContainerName == result.K8SContainerName &&
-                //     //     vulnerability.Image == result.Image){
-                //     //         matchingVulnerabilities.Add(vulnerability);
-                //     //         writer.WriteLine($"{vulnerability.VulnerabilityID},{vulnerability.Severity},{vulnerability.PackageName},{vulnerability.PackageVersion},{vulnerability.PackageType},{vulnerability.PackagePath},{vulnerability.Image},{vulnerability.OSName},{vulnerability.CVSSVersion},{vulnerability.CVSSScore},{vulnerability.CVSSVector},{vulnerability.VulnLink},{vulnerability.VulnPublishDate},{vulnerability.VulnFixDate},{vulnerability.FixVersion},{vulnerability.PublicExploit},{vulnerability.K8SClusterName},{vulnerability.K8SNamespaceName},{vulnerability.K8SWorkloadType},{vulnerability.K8SWorkloadName},{vulnerability.K8SContainerName},{vulnerability.ImageID},{vulnerability.K8SPODCount},{vulnerability.PackageSuggestedFix},{vulnerability.InUse},{vulnerability.RiskAccepted}");
-                //     //         unmatchedRuntimeResults.Remove(result);
-                //     //     }
-                //     // }
+                using (StreamWriter writer = new StreamWriter(outputFileName))
+                {
+                    // Writing headers
+                    writer.WriteLine(string.Join(",", matchedVulnsList[0].Keys));
 
-                //     var matchingVulnerabilities = vulnerabilities.Where(v =>
-                //         v.K8SClusterName == result.K8SClusterName &&
-                //         v.K8SNamespaceName == result.K8SNamespaceName &&
-                //         v.K8SWorkloadType == result.K8SWorkloadType &&
-                //         v.K8SWorkloadName == result.K8SWorkloadName &&
-                //         v.K8SContainerName == result.K8SContainerName &&
-                //         v.Image == result.Image &&
-                //         v.ImageID == result.ImageId
-                //     ).ToList();;
-
-                //     // if (matchingVulnerabilities.Any())
-                //     // {
-                //     //     foreach (var vulnerability in matchingVulnerabilities)
-                //     //     {
-                //     //         // writer.WriteLine($"{vulnerability.VulnerabilityID},{vulnerability.Severity},{vulnerability.PackageName},{vulnerability.PackageVersion},{vulnerability.PackageType},{vulnerability.PackagePath},{vulnerability.Image},{vulnerability.OSName},{vulnerability.CVSSVersion},{vulnerability.CVSSScore},{vulnerability.CVSSVector},{vulnerability.VulnLink},{vulnerability.VulnPublishDate},{vulnerability.VulnFixDate},{vulnerability.FixVersion},{vulnerability.PublicExploit},{vulnerability.K8SClusterName},{vulnerability.K8SNamespaceName},{vulnerability.K8SWorkloadType},{vulnerability.K8SWorkloadName},{vulnerability.K8SContainerName},{vulnerability.ImageID},{vulnerability.K8SPODCount},{vulnerability.PackageSuggestedFix},{vulnerability.InUse},{vulnerability.RiskAccepted}");
-                //     //         vulnerabilities.Remove(vulnerability); // Remove matched vulnerability
-                //     //     }
-                //     //     unmatchedRuntimeResults.Remove(result); // Remove matched runtime result
-                //     // }
-                //     foreach (var vulnerability in matchingVulnerabilities)
-                //     {
-                //         // unmatchedReportResults.Remove(vulnerability);
-                //         matchedVulnsList.Add(vulnerability);
-                //         vulnerabilities.Remove(vulnerability);
-                //         // writer.WriteLine($"{vulnerability.VulnerabilityID},{vulnerability.Severity},{vulnerability.PackageName},{vulnerability.PackageVersion},{vulnerability.PackageType},{vulnerability.PackagePath},{vulnerability.Image},{vulnerability.OSName},{vulnerability.CVSSVersion},{vulnerability.CVSSScore},{vulnerability.CVSSVector},{vulnerability.VulnLink},{vulnerability.VulnPublishDate},{vulnerability.VulnFixDate},{vulnerability.FixVersion},{vulnerability.PublicExploit},{vulnerability.K8SClusterName},{vulnerability.K8SNamespaceName},{vulnerability.K8SWorkloadType},{vulnerability.K8SWorkloadName},{vulnerability.K8SContainerName},{vulnerability.ImageID},{vulnerability.K8SPODCount},{vulnerability.PackageSuggestedFix},{vulnerability.InUse},{vulnerability.RiskAccepted}");
-                //         vulnCounter++;
-                //     }
-
-                //     if (matchingVulnerabilities.Count > 0){
-                //         unmatchedRuntimeResults.Remove(result);
-                //     }
-                // }
-
-                // logger.LogInformation("Total running workloads processed: " + counter);
-
-                using (StreamWriter writer = new StreamWriter(outputFileName)){
-                    writer.WriteLine("Vulnerability ID,Severity,Package name,Package version,Package type,Package path,Image,OS Name,CVSS version,CVSS score,CVSS vector,Vuln link,Vuln Publish date,Vuln Fix date,Fix version,Public Exploit,K8S cluster name,K8S namespace name,K8S workload type,K8S workload name,K8S container name,Image ID,K8S POD count,Package suggested fix,In use,Risk accepted");
+                    // Writing data
                     foreach (var vulnerability in matchedVulnsList)
                     {
-                        writer.WriteLine($"{vulnerability.VulnerabilityID},{vulnerability.Severity},{vulnerability.PackageName},{vulnerability.PackageVersion},{vulnerability.PackageType},{vulnerability.PackagePath},{vulnerability.Image},{vulnerability.OSName},{vulnerability.CVSSVersion},{vulnerability.CVSSScore},{vulnerability.CVSSVector},{vulnerability.VulnLink},{vulnerability.VulnPublishDate},{vulnerability.VulnFixDate},{vulnerability.FixVersion},{vulnerability.PublicExploit},{vulnerability.K8SClusterName},{vulnerability.K8SNamespaceName},{vulnerability.K8SWorkloadType},{vulnerability.K8SWorkloadName},{vulnerability.K8SContainerName},{vulnerability.ImageID},{vulnerability.K8SPODCount},{vulnerability.PackageSuggestedFix},{vulnerability.InUse},{vulnerability.RiskAccepted}");
+                        // Writing values
+                        writer.WriteLine(string.Join(",", vulnerability.Values));
                     }
                 }
 
@@ -237,47 +165,12 @@ class Program
                     .GroupBy(r => new { r.K8SClusterName, r.K8SNamespaceName, r.K8SWorkloadType, r.K8SWorkloadName, r.K8SContainerName, r.Image })
                     .Where(g => g.Count() > 1)
                     .SelectMany(g => g);
-                
-                // if (duplicates.Any())
-                // {
-                //     foreach (var duplicate in duplicates)
-                //     {
-                //         logger.LogInformation($"Duplicate found: {duplicate.K8SClusterName}, {duplicate.K8SNamespaceName}, {duplicate.K8SWorkloadType}, {duplicate.K8SWorkloadName}, {duplicate.K8SContainerName}, {duplicate.Image}");
-                //     }
-                // }
-
-                int totalDuplicatesCount = duplicates.Count();
         
-                logger.LogInformation("Total count of duplicates found: " + totalDuplicatesCount);
+                logger.LogInformation("Total workloads with identical runtime context: " + duplicates.Count());
                 logger.LogInformation("Total runtime report entries: " + totalRuntimeEntries);
                 logger.LogInformation("Total entries for final report: " + matchedVulnsList.Count);
                 logger.LogInformation("Total inactive runtime entries trimmed: " + (totalRuntimeEntries - matchedVulnsList.Count));
                 logger.LogInformation("Total assets scanned:  " + counter);
-
-                // foreach (var vulnerability in matchingVulnerabilities)
-                // {
-                //     // writer.WriteLine($"{vulnerability.VulnerabilityID},{vulnerability.Severity},{vulnerability.PackageName},{vulnerability.PackageVersion},{vulnerability.PackageType},{vulnerability.PackagePath},{vulnerability.Image},{vulnerability.OSName},{vulnerability.CVSSVersion},{vulnerability.CVSSScore},{vulnerability.CVSSVector},{vulnerability.VulnLink},{vulnerability.VulnPublishDate},{vulnerability.VulnFixDate},{vulnerability.FixVersion},{vulnerability.PublicExploit},{vulnerability.K8SClusterName},{vulnerability.K8SNamespaceName},{vulnerability.K8SWorkloadType},{vulnerability.K8SWorkloadName},{vulnerability.K8SContainerName},{vulnerability.ImageID},{vulnerability.K8SPODCount},{vulnerability.PackageSuggestedFix},{vulnerability.InUse},{vulnerability.RiskAccepted}");
-                //     vulnerabilities.Remove(vulnerability); // Remove matched vulnerability
-                // }
-
-                    // Output remaining vulnerabilities (not matched to any runtime result)
-                using (StreamWriter unmatchedWriter = new StreamWriter("unmatched_vulnerabilities.csv"))
-                {
-                    foreach (var unmatchedResult in unmatchedRuntimeResults)
-                    {
-                        // Output the fields of unmatched runtime results
-                        // Modify this according to the structure of your RuntimeResult class
-                        unmatchedWriter.WriteLine($"UNMATCHED_RUNTIME_RESULT,{unmatchedResult.K8SClusterName},{unmatchedResult.K8SNamespaceName},{unmatchedResult.K8SWorkloadType},{unmatchedResult.K8SWorkloadName},{unmatchedResult.K8SContainerName},{unmatchedResult.Image},{unmatchedResult.ImageId}");
-                    }
-                }
-
-                using (StreamWriter reportUnmatchedWriter = new StreamWriter("reportingMissing_vulnerabilities.csv"))
-                {
-                    foreach (var unmatchedVulnerability in vulnerabilities)
-                    {
-                        reportUnmatchedWriter.WriteLine($"{unmatchedVulnerability.VulnerabilityID},{unmatchedVulnerability.Severity},{unmatchedVulnerability.PackageName},{unmatchedVulnerability.PackageVersion},{unmatchedVulnerability.PackageType},{unmatchedVulnerability.PackagePath},{unmatchedVulnerability.Image},{unmatchedVulnerability.OSName},{unmatchedVulnerability.CVSSVersion},{unmatchedVulnerability.CVSSScore},{unmatchedVulnerability.CVSSVector},{unmatchedVulnerability.VulnLink},{unmatchedVulnerability.VulnPublishDate},{unmatchedVulnerability.VulnFixDate},{unmatchedVulnerability.FixVersion},{unmatchedVulnerability.PublicExploit},{unmatchedVulnerability.K8SClusterName},{unmatchedVulnerability.K8SNamespaceName},{unmatchedVulnerability.K8SWorkloadType},{unmatchedVulnerability.K8SWorkloadName},{unmatchedVulnerability.K8SContainerName},{unmatchedVulnerability.ImageID},{unmatchedVulnerability.K8SPODCount},{unmatchedVulnerability.PackageSuggestedFix},{unmatchedVulnerability.InUse},{unmatchedVulnerability.RiskAccepted}");
-                    }
-                }
 
                 if (lastCompletedAt.HasValue)
                     logger.LogInformation($"Last completed report: {lastCompletedAt.Value} UTC");
