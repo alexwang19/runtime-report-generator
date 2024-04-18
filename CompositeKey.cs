@@ -13,7 +13,7 @@ public class CompositeKey
     {
         unchecked
         {
-            // Choosing prime numbers to reduce potential collisions when generating hash codes
+            // Choosing prime numbers to avoid potential collisions when generating hash codes
             int hash = 17;
             hash = hash * 23 + (K8SClusterName?.GetHashCode() ?? 0);
             hash = hash * 23 + (K8SNamespaceName?.GetHashCode() ?? 0);
