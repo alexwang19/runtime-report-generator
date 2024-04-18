@@ -85,7 +85,7 @@ class Program
                             }
                             else
                             {
-                                vulnerability[header] = ""; // or any default value if desired
+                                vulnerability[header] = ""; // default value if empty
                             }
                         }
                         vulnerabilities.Add(vulnerability);
