@@ -161,12 +161,13 @@ class Program
                 }
 
                 // Find duplicates
-                var duplicates = runtimeResults
-                    .GroupBy(r => new { r.K8SClusterName, r.K8SNamespaceName, r.K8SWorkloadType, r.K8SWorkloadName, r.K8SContainerName, r.Image })
-                    .Where(g => g.Count() > 1)
-                    .SelectMany(g => g);
+                // var duplicates = runtimeResults
+                //     .GroupBy(r => new { r.K8SClusterName, r.K8SNamespaceName, r.K8SWorkloadType, r.K8SWorkloadName, r.K8SContainerName, r.Image })
+                //     .Where(g => g.Count() > 1)
+                //     .SelectMany(g => g);
         
-                logger.LogInformation("Total workloads with identical runtime context: " + duplicates.Count());
+                // logger.LogInformation("Total workloads with identical runtime context: " + duplicates.Count());
+                
                 logger.LogInformation("Total runtime report entries: " + totalRuntimeEntries);
                 logger.LogInformation("Total entries for final report: " + matchedVulnsList.Count);
                 logger.LogInformation("Total inactive runtime entries trimmed: " + (totalRuntimeEntries - matchedVulnsList.Count));
