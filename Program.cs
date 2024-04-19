@@ -1,14 +1,20 @@
-using Newtonsoft.Json;
 using System;
-using Microsoft.Extensions.Logging;
 using System.Diagnostics;
-using System.Reflection;
+using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
+using System.Net.Http;
+using System.IO;
+using System.Collections.Generic;
+using System.Linq;
 
 
 class Program
 {
     static async Task Main(string[] args)
     {
+
+        // Start monitoring memory usage
+        long startMemory = GC.GetTotalMemory(true);
 
         Stopwatch stopwatch = new Stopwatch();
         stopwatch.Start();
@@ -172,6 +178,11 @@ class Program
                 TimeSpan runtime = stopwatch.Elapsed;
                 logger.LogInformation("Total runtime of the script: " + runtime);
                 logger.LogInformation("Runtime report generation completed...");
+                // Stop monitoring memory usage
+                long endMemory = GC.GetTotalMemory(true);
+                long memoryUsed = endMemory - startMemory;
+
+                logger.LogInformation($"Memory used: {memoryUsed} bytes");
             }
         }
         catch (Exception ex)
