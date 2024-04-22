@@ -35,7 +35,7 @@ public class ApiService
         }
     }
 
-    public async Task<Stream> DownloadReport(string secureUrlAuthority, HttpClient httpClient, string reportID, ILogger logger)
+    public async Task DownloadReport(string secureUrlAuthority, HttpClient httpClient, string reportID, string filePath, ILogger logger)
     {
         try
         {
@@ -48,8 +48,19 @@ public class ApiService
 
             logger.LogInformation("API call completed to retrieve report...");
 
-            Stream contentStream = await response.Content.ReadAsStreamAsync();
-            return DecompressStream(contentStream);
+            using (Stream contentStream = await response.Content.ReadAsStreamAsync())
+            {
+                Console.WriteLine("HERE");
+                using (Stream decompressedStream = DecompressStream(contentStream))
+                {
+                    using (FileStream fileStream = File.Create(filePath))
+                    {
+                        decompressedStream.CopyTo(fileStream);
+                    }
+                }
+            }
+            
+            logger.LogInformation($"Report downloaded and saved to: {filePath}");
         }
         catch (HttpRequestException ex)
         {
@@ -65,14 +76,13 @@ public class ApiService
 
     private Stream DecompressStream(Stream inputStream)
     {
-        using (var decompressionStream = new GZipStream(inputStream, CompressionMode.Decompress))
-        {
-            var memoryStream = new MemoryStream();
-            decompressionStream.CopyTo(memoryStream);
-            memoryStream.Seek(0, SeekOrigin.Begin);
-            return memoryStream;
-        }
+        var decompressionStream = new GZipStream(inputStream, CompressionMode.Decompress);
+        var memoryStream = new MemoryStream();
+        decompressionStream.CopyTo(memoryStream);
+        memoryStream.Seek(0, SeekOrigin.Begin);
+        return memoryStream;
     }
+
 
     public async Task<List<RuntimeResultInfo>> GetRuntimeWorkloadScanResultsList(string secureUrlAuthority, HttpClient httpClient, ILogger logger)
     {
