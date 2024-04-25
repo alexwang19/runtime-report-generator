@@ -38,7 +38,7 @@ public class ApiService
             await Task.Delay(TimeSpan.FromSeconds(5));
 
             // Start timer to track elapsed time
-            var timeout = TimeSpan.FromMinutes(15);
+            var timeout = TimeSpan.FromMinutes(30);
             var timer = new Stopwatch();
             timer.Start();
 
@@ -68,7 +68,7 @@ public class ApiService
                 }
 
                 // Wait for a while before checking again
-                await Task.Delay(TimeSpan.FromSeconds(5));
+                await Task.Delay(TimeSpan.FromSeconds(60));
             }
         }
         catch (Exception ex)
