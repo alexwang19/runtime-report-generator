@@ -14,15 +14,6 @@ class Program
     static int totalEntries = 0;
     static async Task Main(string[] args)
     {
-        // // Set the large object heap compaction mode
-        // GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
-
-        // // Set the maximum heap size to 500MB
-        // const long maxHeapSize = 500L * 1024 * 1024;
-
-        // // Set latency mode to LowLatency to limit GC pauses
-        // GCSettings.LatencyMode = GCLatencyMode.LowLatency;
-
         // Start monitoring memory usage
         long startMemory = GC.GetTotalMemory(true);
 
@@ -34,10 +25,7 @@ class Program
         ILogger logger = factory.CreateLogger("Program");
 
         // Parse the command line arguments
-        var (secureUrlAuthority, apiToken, outputFileName, reportID) = ParseArgs(args, logger);
-
-        // Pass accessKey as environment variable
-        // Return Code expected
+        var (secureUrlAuthority, apiToken, outputDirectory, outputFileName, reportID) = ParseArgs(args, logger);
 
         var httpClient = new HttpClient();
         httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiToken);
@@ -48,29 +36,30 @@ class Program
         try
         {    
             var lastCompletedAt = await apiService.GetLastCompletedReportDateTime(secureUrlAuthority, httpClient, reportID, logger);
-            await apiService.DownloadReport(secureUrlAuthority, httpClient, reportID ,"/Users/alex.wang/workspace/test/runtime-report-generator/test.csv", logger);
-            // Dictionary<CompositeKey, System.Collections.Generic.List<System.Collections.Generic.Dictionary<string, string>>> vulnerabilityDictionary;
-            int totalRuntimeEntries = 0;
-            string filePath = "/Users/alex.wang/workspace/test/runtime-report-generator/test.csv";
-            Dictionary<CompositeKey, List<Dictionary<string, string>>> vulnerabilityDictionary  = await ProcessCSV(filePath, logger);
-            // List<Dictionary<string, string>> matchedVulnsList = new List<Dictionary<string, string>>();
-        
-            
+            bool reportStatus = await apiService.RunScheduledReport(secureUrlAuthority, httpClient, reportID, logger);
+            if (!reportStatus)
+            {
+                logger.LogError("Failed generating new report");
+                Environment.Exit(1);
+            }
+            string filePath = await apiService.DownloadReport(secureUrlAuthority, httpClient, reportID ,outputDirectory, logger);
 
-            logger.LogInformation("Beginning matching process...");
-
+            Dictionary<CompositeKey, List<Dictionary<string, string>>> vulnerabilityDictionary  = await ProcessCSV(filePath, logger);   
 
             List<RuntimeResultInfo> runtimeResults = new List<RuntimeResultInfo>();
+
             runtimeResults = await apiService.GetRuntimeWorkloadScanResultsList(secureUrlAuthority, httpClient, logger);
-            // List<Dictionary<string, string>> matchedVulnsList = new List<Dictionary<string, string>>();
+
             int matchedCounter = 0;
             int counter = 0;
+
             // Open the StreamWriter outside the loop to avoid overwriting the file in each iteration
-            using (StreamWriter writer = new StreamWriter(outputFileName))
+            var outputDirectoryFile = outputDirectory + outputFileName;
+            using (StreamWriter writer = new StreamWriter(outputDirectoryFile))
             {
                 // Writing headers
                 writer.WriteLine(string.Join(",", vulnerabilityDictionary.Values.First().First().Keys));
-
+                logger.LogInformation("Beginning matching process...");
                 // Iterate through runtimeResults and perform matching
                 foreach (var result in runtimeResults)
                 {
@@ -121,6 +110,8 @@ class Program
             stopwatch.Stop();
             TimeSpan runtime = stopwatch.Elapsed;
             logger.LogInformation("Total runtime of the script: " + runtime);
+            logger.LogInformation("Clean up runtime report file not needed..." + filePath);
+            File.Delete(filePath);
             logger.LogInformation("Runtime report generation completed...");
             // Stop monitoring memory usage
             long endMemory = GC.GetTotalMemory(true);
@@ -139,16 +130,16 @@ class Program
         }
     }
 
-    static (string secureUrlAuthority, string apiToken, string outputFileName, string reportID) ParseArgs(string[] args, ILogger logger)
+    static (string secureUrlAuthority, string apiToken, string outputDirectory, string outputFileName, string reportID) ParseArgs(string[] args, ILogger logger)
     {
-        if (args.Length < 4)
+        if (args.Length < 5)
         {
             logger.LogInformation("Error: Not enough arguments provided.");
             Console.WriteLine("");
             Environment.Exit(1);
         }
 
-        return (args[0], args[1], args[2], args[3]);
+        return (args[0], args[1], args[2], args[3], args[4]);
     }
 
     static async Task<Dictionary<CompositeKey, List<Dictionary<string, string>>>> ProcessCSV(string filePath, ILogger logger)
@@ -160,6 +151,7 @@ class Program
 
         try
         {
+            logger.LogInformation("Processing downloaded report...");
             using (FileStream csvFileStream = File.OpenRead(filePath))
             using (StreamReader reader = new StreamReader(csvFileStream))
             {
@@ -182,7 +174,7 @@ class Program
                 if (!expectedColumns.All(header => headers.Contains(header)))
                 {
                     logger.LogError("CSV file does not contain all expected column headers.");
-                    return null;
+                    Environment.Exit(1);
                 }
 
                 Dictionary<string, int> columnIndexMap = headers.Select((header, index) => new { Header = header, Index = index })
@@ -192,12 +184,12 @@ class Program
                 while (!reader.EndOfStream)
                 {
                     var line = await reader.ReadLineAsync();
-                    var values = line.Split(',');
+                    var values = line?.Split(',');
 
                     var vulnerability = new Dictionary<string, string>();
                     foreach (var header in columnIndexMap.Keys)
                     {
-                        if (columnIndexMap.TryGetValue(header, out int columnIndex) && columnIndex < values.Length)
+                        if (columnIndexMap.TryGetValue(header, out int columnIndex) && columnIndex < values?.Length)
                         {
                             // Reuse existing key or add to the uniqueKeys dictionary
                             string key = GetOrCreateKey(uniqueKeys, values[columnIndex]);
@@ -216,7 +208,7 @@ class Program
         catch (Exception ex)
         {
             logger.LogError($"An error occurred while processing CSV file: {ex.Message}");
-            return null;
+            Environment.Exit(1);
         }
 
         // Group vulnerabilities by composite key
@@ -239,7 +231,7 @@ class Program
     // Helper method to get or create a key in the uniqueKeys dictionary
     private static string GetOrCreateKey(Dictionary<string, string> uniqueKeys, string value)
     {
-        if (!uniqueKeys.TryGetValue(value, out string key))
+        if (!uniqueKeys.TryGetValue(value, out string? key))
         {
             key = value;
             uniqueKeys.Add(value, key);

@@ -7,10 +7,98 @@ using System.Threading.Tasks;
 using Newtonsoft.Json;
 using System.Net;
 using Microsoft.Extensions.Logging;
+using System.Diagnostics;
+
 
 public class ApiService
 {
 
+    public async Task<bool> RunScheduledReport(string secureUrlAuthority, HttpClient httpClient, string scheduleId, ILogger logger)
+    {
+        try
+        {
+            // Check if there are any reports in progress
+            var isInProgress = await AreReportsInProgress(secureUrlAuthority, httpClient, scheduleId);
+            if (isInProgress)
+            {
+                throw new InvalidOperationException("Report generation is already in progress. Cannot initiate a new report.");
+            }
+
+            // Retrieve latest report prior to running scheduled report
+            DateTime? lastCompletedReportTimestamp = await GetLastCompletedReportDateTime(secureUrlAuthority, httpClient, scheduleId, logger);
+
+            // Make the POST request to generate the report
+            var apiPath = $"api/scanning/reporting/v2/schedules/{scheduleId}/run";
+            var apiUrl = $"https://{secureUrlAuthority}/{apiPath}";
+            logger.LogInformation("Making API call to generate scheduled report...");
+
+            HttpResponseMessage response = await httpClient.PostAsync(apiUrl, null);
+            response.EnsureSuccessStatusCode();
+            // Wait to allow report to be scheduled
+            await Task.Delay(TimeSpan.FromSeconds(5));
+
+            // Start timer to track elapsed time
+            var timeout = TimeSpan.FromMinutes(15);
+            var timer = new Stopwatch();
+            timer.Start();
+
+            // Check if there are any reports with status "progress" or "scheduled"
+            while (true)
+            {
+                var reportsInProgress = await AreReportsInProgress(secureUrlAuthority, httpClient, scheduleId);
+                if (!reportsInProgress)
+                {
+                    logger.LogInformation("No reports in progress or scheduled. Scheduled report generated successfully.");
+                    DateTime? scheduledReportTimestamp = await GetLastCompletedReportDateTime(secureUrlAuthority, httpClient, scheduleId, logger);
+                    bool isNewer = scheduledReportTimestamp > lastCompletedReportTimestamp;
+                    // logger.LogInformation(scheduledReportTimestamp.ToString());
+                    // logger.LogInformation(lastCompletedReportTimestamp.ToString());
+                    // logger.LogInformation(isNewer.ToString());
+                    timer.Stop();
+                    return isNewer;
+                }
+                logger.LogInformation("Waiting for report generation to complete...");
+                
+
+                // Check if timeout is exceeded
+                if (timer.Elapsed >= timeout)
+                {
+                    throw new InvalidOperationException("Timeout exceeded. Scheduled report could not be generated.");
+
+                }
+
+                // Wait for a while before checking again
+                await Task.Delay(TimeSpan.FromSeconds(5));
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError($"Error: {ex.Message}");
+            Environment.Exit(1);
+            return false;
+        }
+    }
+
+    private async Task<bool> AreReportsInProgress(string secureUrlAuthority, HttpClient httpClient, string scheduleId)
+    {
+        var reportsApiPath = $"api/scanning/reporting/v2/schedules/{scheduleId}/reports";
+        var reportsApiUrl = $"https://{secureUrlAuthority}/{reportsApiPath}";
+
+        HttpResponseMessage reportsResponse = await httpClient.GetAsync(reportsApiUrl);
+        reportsResponse.EnsureSuccessStatusCode();
+
+        var reportsJson = await reportsResponse.Content.ReadAsStringAsync();
+        var reports = JsonConvert.DeserializeObject<Report[]>(reportsJson);
+
+        // return reports.Any(r => r.status == "progress" || r.status == "scheduled");
+
+        if (reports != null)
+        {
+            return reports.Any(r => r.status == "progress" || r.status == "scheduled");
+        }
+
+        return false;
+    }
 
     public async Task<DateTime?> GetLastCompletedReportDateTime(string secureUrlAuthority, HttpClient httpClient, string reportID, ILogger logger)
     {
@@ -18,7 +106,7 @@ public class ApiService
         {
             var apiPath = $"api/scanning/reporting/v2/schedules/{reportID}";
             var apiUrl = $"https://{secureUrlAuthority}/{apiPath}";
-            logger.LogInformation("Making API call to download report...");
+            logger.LogInformation("Making API call to download last completed report...");
             
             HttpResponseMessage response = await httpClient.GetAsync(apiUrl);
             response.EnsureSuccessStatusCode();
@@ -35,22 +123,26 @@ public class ApiService
         }
     }
 
-    public async Task DownloadReport(string secureUrlAuthority, HttpClient httpClient, string reportID, string filePath, ILogger logger)
+    public async Task<string> DownloadReport(string secureUrlAuthority, HttpClient httpClient, string reportID, string directoryPath, ILogger logger)
     {
         try
         {
             var apiPath = $"api/scanning/reporting/v2/schedules/{reportID}/download";
             var apiUrl = $"https://{secureUrlAuthority}/{apiPath}";
-            logger.LogInformation("Making API call to download report...");
+            logger.LogInformation("Making API call to download latest generated report...");
             
             HttpResponseMessage response = await httpClient.GetAsync(apiUrl);
             response.EnsureSuccessStatusCode(); // Ensure the HTTP request was successful
 
             logger.LogInformation("API call completed to retrieve report...");
 
+            // Generate a unique filename
+            string uniqueFileName = Path.GetFileNameWithoutExtension(Path.GetRandomFileName());
+            string fileNameWithPrefix = $"sysdig_{uniqueFileName}.csv";
+            string filePath = Path.Combine(directoryPath, fileNameWithPrefix);
+
             using (Stream contentStream = await response.Content.ReadAsStreamAsync())
             {
-                Console.WriteLine("HERE");
                 using (Stream decompressedStream = DecompressStream(contentStream))
                 {
                     using (FileStream fileStream = File.Create(filePath))
@@ -61,6 +153,7 @@ public class ApiService
             }
             
             logger.LogInformation($"Report downloaded and saved to: {filePath}");
+            return filePath; // Return the generated filename
         }
         catch (HttpRequestException ex)
         {
