@@ -14,10 +14,6 @@ class Program
     static int totalEntries = 0;
     static async Task Main(string[] args)
     {
-        // Start monitoring memory usage
-        long startMemory = GC.GetTotalMemory(true);
-
-
         Stopwatch stopwatch = new Stopwatch();
         stopwatch.Start();
 
@@ -113,13 +109,6 @@ class Program
             logger.LogInformation("Clean up runtime report file not needed..." + filePath);
             File.Delete(filePath);
             logger.LogInformation("Runtime report generation completed...");
-            // Stop monitoring memory usage
-            long endMemory = GC.GetTotalMemory(true);
-            long memoryUsed = endMemory - startMemory;
-            logger.LogInformation($"Memory end used: {endMemory} bytes");
-            logger.LogInformation($"Memory started used: {startMemory} bytes");
-            logger.LogInformation($"Memory used: {memoryUsed} bytes");
-            logger.LogInformation($"Memory used: {memoryUsed / (1024 * 1024 * 1024)} GB");
         }
         catch (Exception ex)
         {

@@ -51,9 +51,6 @@ public class ApiService
                     logger.LogInformation("No reports in progress or scheduled. Scheduled report generated successfully.");
                     DateTime? scheduledReportTimestamp = await GetLastCompletedReportDateTime(secureUrlAuthority, httpClient, scheduleId, logger);
                     bool isNewer = scheduledReportTimestamp > lastCompletedReportTimestamp;
-                    // logger.LogInformation(scheduledReportTimestamp.ToString());
-                    // logger.LogInformation(lastCompletedReportTimestamp.ToString());
-                    // logger.LogInformation(isNewer.ToString());
                     timer.Stop();
                     return isNewer;
                 }
@@ -89,8 +86,6 @@ public class ApiService
 
         var reportsJson = await reportsResponse.Content.ReadAsStringAsync();
         var reports = JsonConvert.DeserializeObject<Report[]>(reportsJson);
-
-        // return reports.Any(r => r.status == "progress" || r.status == "scheduled");
 
         if (reports != null)
         {
